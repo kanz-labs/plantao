@@ -1,0 +1,14 @@
+[Unit]
+Description=Plantão: quest %i
+
+[Service]
+Type=simple
+# Impede suspender (inclusive pela tampa) enquanto a quest roda
+ExecStart=/usr/bin/systemd-inhibit --what=sleep:idle:handle-lid-switch --who=plantao --why=%i %h/projects/plantao/rodar.sh %i
+Restart=on-failure
+RestartSec=5
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+UnsetEnvironment=ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+
+[Install]
+WantedBy=default.target

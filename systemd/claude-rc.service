@@ -1,0 +1,17 @@
+[Unit]
+Description=Claude Remote Control sempre ligado
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/.Mind
+# script dá um terminal falso: o claude rc espera um TTY
+ExecStart=/usr/bin/script -qfec "%h/.local/bin/claude remote-control" /dev/null
+Restart=always
+RestartSec=10
+Environment=PATH=%h/.local/bin:/usr/local/bin:/usr/bin
+UnsetEnvironment=ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,8 @@
+# Só a lógica do plantão vai para o git: scripts, serviços, regras e o modelo de quest.
+# As quests (resultados, prints, diários, sessões) ficam só nesta máquina.
+quests/*
+!quests/_modelo/
+
+.impeccable/
+.codex-sessao
+*.log
