@@ -4,11 +4,13 @@
 set -uo pipefail
 
 RAIZ="$(cd "$(dirname "$0")" && pwd)"
+. "$RAIZ/lib.sh"
 NOME="${1:?uso: rodar.sh <quest>}"
 Q="$RAIZ/quests/$NOME"
 TMP=/tmp/plantao
 # O codex do app ChatGPT se atualiza com ele; o /usr/bin/codex fica velho e a conta recusa os modelos
 CODEX=/usr/lib/chatgpt/resources/codex
+[ -x "$CODEX" ] || CODEX=/Applications/ChatGPT.app/Contents/Resources/codex
 [ -x "$CODEX" ] || CODEX=codex
 [ -f "$Q/QUEST.md" ] || { echo "quest $NOME não existe"; exit 1; }
 
@@ -17,8 +19,7 @@ unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE
 unset OPENAI_API_KEY OPENAI_BASE_URL CODEX_API_KEY AZURE_OPENAI_API_KEY
 
 mkdir -p "$TMP"
-exec 9>"$TMP/$NOME.lock"
-flock -n 9 || { echo "quest $NOME já está rodando"; exit 0; }
+travar "$TMP/$NOME" || { echo "quest $NOME já está rodando"; exit 0; }
 cd "$Q"
 touch diario.md
 
@@ -58,7 +59,7 @@ print(int(target.timestamp()) + 60)
 PY
 }
 
-# Executa uma única sessão Codex por quest; a mesma trava flock cobre os dois CLIs.
+# Executa uma única sessão Codex por quest; a mesma trava cobre os dois CLIs.
 # O Codex não herda a conversa do Claude: lê os artefatos e o diário da quest.
 rodar_codex_ate() {
   local prazo="$1" rc inicio dur id prompt vazios=0
@@ -80,11 +81,11 @@ rodar_codex_ate() {
       id=$(cat .codex-sessao)
       prompt="Continue a quest. Releia QUEST.md, o fim de diario.md e $RAIZ/AGENTS.md. Não mude o status do QUEST.md. Registre só decisões e feitos no diário."
       inicio=$(date +%s)
-      "$CODEX" -C "$Q" --sandbox workspace-write --ask-for-approval never "${dirs[@]}" exec resume --ignore-user-config -c "model=\"${modelos[0]}\"" --json "$id" "$prompt" < /dev/null > "$TMP/$NOME.codex.jsonl" 2> "$TMP/$NOME.codex.erro"
+      "$CODEX" -C "$Q" --sandbox workspace-write --ask-for-approval never ${dirs[@]+"${dirs[@]}"} exec resume --ignore-user-config -c "model=\"${modelos[0]}\"" --json "$id" "$prompt" < /dev/null > "$TMP/$NOME.codex.jsonl" 2> "$TMP/$NOME.codex.erro"
     else
       prompt="Você assumiu esta quest porque a assinatura Claude atingiu o limite. Leia $RAIZ/AGENTS.md, QUEST.md, diario.md e os resultados existentes; continue de onde parou. As regras de segurança e de dinheiro do AGENTS.md e os limites do QUEST.md valem integralmente. Você roda sem rede e só escreve na pasta da quest e nas codex-pastas: pule o que depender de outra coisa. Não mude o status do QUEST.md. Não invoque Claude ou outro serviço de IA. Registre apenas decisões e feitos no diário; resposta final curta."
       inicio=$(date +%s)
-      "$CODEX" -C "$Q" --sandbox workspace-write --ask-for-approval never "${dirs[@]}" exec --ignore-user-config -c "model=\"${modelos[0]}\"" --json "$prompt" < /dev/null > "$TMP/$NOME.codex.jsonl" 2> "$TMP/$NOME.codex.erro"
+      "$CODEX" -C "$Q" --sandbox workspace-write --ask-for-approval never ${dirs[@]+"${dirs[@]}"} exec --ignore-user-config -c "model=\"${modelos[0]}\"" --json "$prompt" < /dev/null > "$TMP/$NOME.codex.jsonl" 2> "$TMP/$NOME.codex.erro"
     fi
     rc=$?
     dur=$(( $(date +%s) - inicio ))
@@ -120,7 +121,7 @@ PY
   done
 }
 
-[ -f .sessao ] || cat /proc/sys/kernel/random/uuid > .sessao
+[ -f .sessao ] || novo_uuid > .sessao
 SESSAO=$(cat .sessao)
 
 falhas=0; vazias=0
@@ -140,7 +141,7 @@ while ativa; do
   fi
 
   inicio=$(date +%s)
-  claude -p --chrome --model claude-opus-5-5 --permission-mode auto --autocompact 100k --add-dir "$RAIZ" "${extra[@]}" "${args[@]}" < /dev/null > "$TMP/$NOME.saida" 2>&1
+  claude -p --chrome --model claude-opus-5-5 --permission-mode auto --autocompact 100k --add-dir "$RAIZ" ${extra[@]+"${extra[@]}"} "${args[@]}" < /dev/null > "$TMP/$NOME.saida" 2>&1
   rc=$?
   dur=$(( $(date +%s) - inicio ))
 
@@ -156,7 +157,7 @@ while ativa; do
     # Turnos curtos em sequência sem avanço: evita girar gastando limite
     if [ $dur -lt 60 ]; then vazias=$((vazias + 1)); else vazias=0; fi
     if [ $vazias -ge 5 ]; then
-      sed -i 's/^status: ativa/status: travada/' QUEST.md
+      sed_i 's/^status: ativa/status: travada/' QUEST.md
       evento "5 turnos seguidos sem trabalho, travada"
     fi
   else
@@ -169,7 +170,7 @@ while ativa; do
         evento 'limite do Claude; passando a quest ao Codex'
         rodar_codex_ate "$prazo"
       else
-        evento "aguardando o limite até $(date -d "@$prazo" '+%H:%M')"
+        evento "aguardando o limite até $(hora_de "$prazo")"
       fi
       restante=$(( prazo - $(date +%s) ))
       if ativa && [ "$restante" -gt 0 ]; then sleep "$restante"; fi

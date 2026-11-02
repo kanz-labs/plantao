@@ -15,3 +15,12 @@ O runner remove variáveis de chave de API e só inicia o Codex quando `codex lo
 Os acontecimentos importantes ficam em `quests/<nome>/diario.md`. A última saída do Claude fica em `/tmp/plantao/<nome>.saida`; a última saída estruturada do Codex e os erros ficam em `/tmp/plantao/<nome>.codex.jsonl` e `.codex.erro`. Esses arquivos temporários somem no reinício.
 
 Com ou sem Codex, no limite da assinatura o runner dorme até o horário de retorno da mensagem (sem horário reconhecível, 1 hora). Recusa passageira ("rate limit", 429) só espera 1 minuto e não aciona o Codex. O fallback não foi exercitado com um limite real; se a mensagem mudar, a saída em `/tmp/plantao/` permite ajustar o detector.
+
+## Linux e macOS
+
+`plantao instalar` põe o comando em `~/.local/bin` e, no Linux, liga o serviço `plantao@.service` do systemd. No macOS cada quest vira um agente do launchd (`~/Library/LaunchAgents/com.kanz.plantao.<nome>.plist`), criado no `plantao ligar` e apagado no `plantao desligar`; os logs ficam em `/tmp/plantao/<nome>.servico.log`. As diferenças entre os dois sistemas ficam em `lib.sh`.
+
+No macOS:
+- Precisa de `python3` (vem com as ferramentas de linha de comando do Xcode) e do `claude` no PATH.
+- O `caffeinate` impede o Mac de dormir enquanto a quest roda. Com a tampa fechada ele só fica acordado na tomada e com monitor externo.
+- O Remote Control sempre ligado fica em `launchd/com.kanz.claude-rc.plist`; o comando de instalação está no próprio arquivo.

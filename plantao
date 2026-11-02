@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# plantao nova <nome> | ligar <nome> | reabrir <nome> | desligar <nome> | fallback <nome> codex|nenhum | status
+# plantao nova <nome> | ligar <nome> | reabrir <nome> | desligar <nome> | fallback <nome> codex|nenhum | status | instalar
+# Roda no Linux (systemd) e no macOS (launchd); as diferenças ficam em lib.sh.
 set -euo pipefail
-RAIZ="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+src="$0"
+while [ -L "$src" ]; do d="$(cd "$(dirname "$src")" && pwd)"; src="$(readlink "$src")"; case "$src" in /*) ;; *) src="$d/$src" ;; esac; done
+RAIZ="$(cd "$(dirname "$src")" && pwd)"
+. "$RAIZ/lib.sh"
 cmd="${1:-status}"; nome="${2:-}"
 
 case "$cmd" in
@@ -10,22 +14,24 @@ case "$cmd" in
     cp -r "$RAIZ/quests/_modelo" "$RAIZ/quests/$nome"
     echo "edite quests/$nome/QUEST.md e rode: plantao ligar $nome" ;;
   ligar)
-    sed -i 's/^status: .*/status: ativa/' "$RAIZ/quests/$nome/QUEST.md"
-    systemctl --user enable --now "plantao@$nome" ;;
+    [ -n "$nome" ] && [ -f "$RAIZ/quests/$nome/QUEST.md" ] || { echo "quest não existe"; exit 1; }
+    sed_i 's/^status: .*/status: ativa/' "$RAIZ/quests/$nome/QUEST.md"
+    servico_ligar "$nome" "$RAIZ" ;;
   reabrir)
     # Rejeita a rodada: guarda o resultado, abre sessão limpa e cria a seção de revisão
     q="$RAIZ/quests/$nome"; [ -f "$q/QUEST.md" ] || { echo "quest não existe"; exit 1; }
-    systemctl --user stop "plantao@$nome" 2>/dev/null || true
+    servico_parar "$nome"
     n=1; while [ -e "$q/resultados-r$n" ]; do n=$((n + 1)); done
     [ -d "$q/resultados" ] && cp -r "$q/resultados" "$q/resultados-r$n"
     rm -f "$q/.sessao" "$q/.iniciada" "$q/.codex-sessao"
-    sed -i 's/^status: .*/status: pausada/' "$q/QUEST.md"
+    sed_i 's/^status: .*/status: pausada/' "$q/QUEST.md"
     printf '\n# Revisão %s\n\n' "$n" >> "$q/QUEST.md"
     echo "$(date '+%F %H:%M') · sistema · reaberta, rodada anterior guardada em resultados-r$n" >> "$q/diario.md"
     echo "escreva o que mudar em QUEST.md (Revisão $n) e rode: plantao ligar $nome" ;;
   desligar)
-    sed -i 's/^status: ativa/status: pausada/' "$RAIZ/quests/$nome/QUEST.md"
-    systemctl --user disable --now "plantao@$nome" ;;
+    [ -n "$nome" ] && [ -f "$RAIZ/quests/$nome/QUEST.md" ] || { echo "quest não existe"; exit 1; }
+    sed_i 's/^status: ativa/status: pausada/' "$RAIZ/quests/$nome/QUEST.md"
+    servico_desligar "$nome" ;;
   fallback)
     q="$RAIZ/quests/$nome/QUEST.md"; [ -f "$q" ] || { echo "quest não existe"; exit 1; }
     case "${3:-}" in
@@ -34,16 +40,28 @@ case "$cmd" in
       *) echo "uso: plantao fallback <nome> codex|nenhum"; exit 1 ;;
     esac
     if grep -q '^codex:' "$q"; then
-      sed -i "s/^codex: .*/codex: $modo/" "$q"
+      sed_i "s/^codex: .*/codex: $modo/" "$q"
     else
-      sed -i "1a codex: $modo" "$q"
+      awk -v l="codex: $modo" '{ print } NR == 1 { print l }' "$q" > "$q.tmp" && mv "$q.tmp" "$q"
     fi
     echo "fallback de $nome: ${3} (serviços já em execução usam a nova regra após reiniciar)" ;;
   status)
     for q in "$RAIZ"/quests/*/; do
       n=$(basename "$q"); [ "$n" = _modelo ] && continue
       printf '%-20s %-10s %s\n' "$n" "$(sed -n 's/^status: //p' "$q/QUEST.md")" \
-        "$(systemctl --user is-active "plantao@$n" 2>/dev/null || true)"
+        "$(servico_estado "$n")"
     done ;;
-  *) echo "uso: plantao nova|ligar|reabrir|desligar|fallback|status [nome]"; exit 1 ;;
+  instalar)
+    # Comando plantao no PATH; no Linux também o serviço do systemd
+    mkdir -p "$HOME/.local/bin" /tmp/plantao
+    ln -sf "$RAIZ/plantao" "$HOME/.local/bin/plantao"
+    if [ "$SO" = Linux ]; then
+      mkdir -p "$HOME/.config/systemd/user"
+      ln -sf "$RAIZ/systemd/plantao@.service" "$HOME/.config/systemd/user/plantao@.service"
+      systemctl --user daemon-reload
+    fi
+    command -v claude >/dev/null || echo "aviso: claude não está no PATH"
+    command -v python3 >/dev/null || echo "aviso: python3 não está no PATH"
+    echo "instalado em $HOME/.local/bin/plantao ($SO)" ;;
+  *) echo "uso: plantao nova|ligar|reabrir|desligar|fallback|status|instalar [nome]"; exit 1 ;;
 esac

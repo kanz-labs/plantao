@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Claude Remote Control sempre ligado (macOS). Equivale a systemd/claude-rc.service.
+     Instalar: sed "s|__HOME__|$HOME|g" launchd/com.kanz.claude-rc.plist > ~/Library/LaunchAgents/com.kanz.claude-rc.plist
+               launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.kanz.claude-rc.plist -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.kanz.claude-rc</string>
+  <key>WorkingDirectory</key><string>__HOME__/.Mind</string>
+  <!-- script dá um terminal falso: o claude rc espera um TTY (sintaxe do script do macOS) -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/bin/script</string><string>-q</string><string>/dev/null</string>
+    <string>__HOME__/.local/bin/claude</string><string>remote-control</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>__HOME__/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/tmp/claude-rc.log</string>
+  <key>StandardErrorPath</key><string>/tmp/claude-rc.log</string>
+</dict>
+</plist>
